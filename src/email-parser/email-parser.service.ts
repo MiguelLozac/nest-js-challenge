@@ -1,7 +1,7 @@
 // src/mail-parsing.service.ts
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import * as mailParser from 'mailparser';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import * as fs from 'fs/promises';
 import * as cheerio from 'cheerio';
 
@@ -14,17 +14,17 @@ export class EmailParserService {
       // checks if is a URL or a local file path
       if (urlOrPath.startsWith('http')) {
         // Fetch email
-        const response = await axios.get(urlOrPath);
+        const response: AxiosResponse<string> = await axios.get(urlOrPath);
         emailContent = response.data;
       } else {
         // Read the email local file
         emailContent = await fs.readFile(urlOrPath, 'utf-8');
       }
 
-      // Parse the email content using mail-parser
+      // Parsing the email content
       const parsedEmail = await mailParser.simpleParser(emailContent);
 
-      // Extract JSON from the email attachments or body
+      // Extracting JSON from the email attachments or body
       const jsonAttachment = parsedEmail.attachments.find(
         (attachment) => attachment.contentType === 'application/json'
       );
@@ -34,7 +34,7 @@ export class EmailParserService {
         return JSON.parse(jsonAttachment.content.toString());
       } else if (parsedEmail.text) {
         // check for links
-        const links = parsedEmail.text.match(/https?:\/\/[^\s]+/g);
+        const links: RegExpMatchArray | null = parsedEmail.text.match(/https?:\/\/[^\s]+/g);
 
         if (links) {
           for (const link of links) {
@@ -59,25 +59,22 @@ export class EmailParserService {
 
   private async fetchJsonFromLink(link: string): Promise<any> {
     try {
-      const response = await axios.get(link);
+      const response: AxiosResponse<string> = await axios.get(link);
       const contentType = response.headers['content-type'];
-      console.log('response ', response)
-
-      console.log('contentType ', contentType)
+    
       if (contentType && contentType.includes('application/json')) {
         return response.data;
       } else if (contentType && contentType.includes('text/html')) {
 
         const $ = cheerio.load(response.data);
-        const jsonLink = $('a[href$=".json"]').attr('href');
-        console.log('jsonLink ', jsonLink)
+        const jsonLink: string | undefined = $('a[href$=".json"]').attr('href');
         if (jsonLink) {
           const isRelativeURL = !jsonLink.startsWith('http');
 
-          const baseURL = response.config.url;
-          const jsonUrl = isRelativeURL ? new URL(jsonLink, baseURL).href : jsonLink;
+          const baseURL: string = response.config.url || '';
+          const jsonUrl: string = isRelativeURL ? new URL(jsonLink, baseURL).href : jsonLink;
       
-          const nestedJsonResponse = await axios.get(jsonUrl);
+          const nestedJsonResponse: AxiosResponse<any> = await axios.get(jsonUrl);
           return nestedJsonResponse.data;
         }
       }
